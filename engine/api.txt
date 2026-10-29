@@ -1,0 +1,495 @@
+package engine // import "github.com/TomazVidovic533/stackpuddle-control-plane/engine"
+
+Package engine is the only public package of the control plane: a Go library
+the command-line interface runs in-process. It submits, inspects and cancels
+operations on one environment of a loaded project and advertises what it can
+run.
+
+There is no listener, transport or login here. Everything else lives under
+internal/.
+
+CONSTANTS
+
+const (
+	CommandUp      = state.CommandUp
+	CommandStop    = state.CommandStop
+	CommandDestroy = state.CommandDestroy
+	CommandRun     = state.CommandRun
+)
+    The commands.
+
+const (
+	StatusRunning     = state.OpRunning
+	StatusSucceeded   = state.OpSucceeded
+	StatusFailed      = state.OpFailed
+	StatusCancelled   = state.OpCancelled
+	StatusInterrupted = state.OpInterrupted
+	StatusBlocked     = state.OpBlocked
+)
+    The operation statuses.
+
+const (
+	StepPending                = state.StepPending
+	StepStarted                = state.StepStarted
+	StepCompleted              = state.StepCompleted
+	StepCompletedByObservation = state.StepCompletedByObservation
+	StepNotApplied             = state.StepNotApplied
+	StepFailed                 = state.StepFailed
+	StepBlocked                = state.StepBlocked
+)
+    The step statuses.
+
+const (
+	ActorOSUser = state.ActorOSUser
+	ActorToken  = state.ActorToken
+)
+    The actor kinds. m01 writes only ActorOSUser.
+
+const (
+	CategoryValidation = state.CategoryValidation
+	CategoryNotFound   = state.CategoryNotFound
+	CategoryConflict   = state.CategoryConflict
+	CategoryForbidden  = state.CategoryForbidden
+	CategoryTransient  = state.CategoryTransient
+	CategoryUnexpected = state.CategoryUnexpected
+)
+    The error categories.
+
+const RuntimeCapability = "runtime.compose/1"
+    RuntimeCapability is the capability of the Docker Compose runtime this
+    engine runs.
+
+
+TYPES
+
+type Action struct {
+	// Action is the step's action, empty for a blocked row.
+	Action string
+	Object string
+	Effect Effect
+	// Unknown is true when the plan cannot say whether the step still has anything to do: an open
+	// operation already started it, or a module driver owns its effect.
+	Unknown bool
+	// Problem is the code of the finding of a blocked row, empty for a step.
+	Problem Code
+}
+    Action is one line of a preview: a planned step, or a finding that blocks
+    the operation.
+
+type ActorKind = state.ActorKind
+    ActorKind says who submitted an operation.
+
+type CancelRequest struct {
+	Scope     Scope
+	Operation OperationID
+}
+    CancelRequest names the operation to cancel.
+
+type Category = state.Category
+    Category is the class of an error, which decides how a caller reacts.
+
+type Code string
+    Code is a stable error code, "<area>.<name>". Callers match on codes,
+    never on message text.
+
+const (
+	CodeCapabilityUnsupported   Code = state.CodeCapabilityUnsupported
+	CodeProjectUnresolved       Code = state.CodeProjectUnresolved
+	CodeProjectInvalid          Code = state.CodeProjectInvalid
+	CodeStateVersionUnsupported Code = state.CodeStateVersionUnsupported
+	CodeExpandedScopeRequired   Code = state.CodeExpandedScopeRequired
+	CodeSecretInEnvironment     Code = state.CodeSecretInEnvironment
+	CodeDeliveryConflict        Code = state.CodeDeliveryConflict
+	CodeValueUnavailable        Code = state.CodeValueUnavailable
+	CodeJobExitedNonzero        Code = state.CodeJobExitedNonzero
+	CodeParametersInvalid       Code = state.CodeParametersInvalid
+	CodeEnvironmentBusy         Code = state.CodeEnvironmentBusy
+	CodeStaleGeneration         Code = state.CodeStaleGeneration
+	CodeFilesystemUnsupported   Code = state.CodeFilesystemUnsupported
+	CodeKeyMissing              Code = state.CodeKeyMissing
+	CodeKeyInvalid              Code = state.CodeKeyInvalid
+	CodeKeyMismatch             Code = state.CodeKeyMismatch
+	CodeStoreUnreadable         Code = state.CodeStoreUnreadable
+	CodeSecretMissing           Code = state.CodeSecretMissing
+	CodeTargetUnreachable       Code = state.CodeTargetUnreachable
+	CodeTargetReplaced          Code = state.CodeTargetReplaced
+	CodeEffectFailed            Code = state.CodeEffectFailed
+	CodeImageMissing            Code = state.CodeImageMissing
+	CodeOutOfScope              Code = state.CodeOutOfScope
+	CodeUnmappedOwnedObject     Code = state.CodeUnmappedOwnedObject
+	CodeLostObject              Code = state.CodeLostObject
+	CodeOperationNotFound       Code = state.CodeOperationNotFound
+	CodeOperationNotRunning     Code = state.CodeOperationNotRunning
+	CodeOperationInterrupted    Code = state.CodeOperationInterrupted
+	CodeOperationCancelled      Code = state.CodeOperationCancelled
+	CodeInvalidSetting          Code = state.CodeInvalidSetting
+	CodeInputMissing            Code = state.CodeInputMissing
+	CodeInputInvalid            Code = state.CodeInputInvalid
+	CodeUnknownObject           Code = state.CodeUnknownObject
+	CodeUnexpected              Code = state.CodeUnexpected
+)
+    The codes re-export the one internal table, internal/state/codes.go.
+    Each is a published name: it is kept or retired explicitly, never renamed.
+
+type Command = state.Command
+    Command is what an operation asks of an environment.
+
+type Effect int
+    Effect is what a preview row does. The set is closed.
+
+const (
+	EffectApply Effect = iota + 1
+	EffectStop
+	EffectDelete
+	EffectBlocked
+)
+    The effects. EffectBlocked marks a finding that blocks the operation and
+    changes nothing.
+
+func (e Effect) String() string
+    String returns the lower-case name of the effect.
+
+type Engine struct {
+	// Has unexported fields.
+}
+    Engine runs operations. It is safe for concurrent use by operations on
+    different environments.
+
+func New(opts Options) (*Engine, error)
+    New composes the engine: settings from the environment, the explicit module
+    catalog, the local secret provider and the Compose runtime adapter. It reads
+    no file and starts no process.
+
+func (e *Engine) Advertise() model.EngineInfo
+    Advertise reports the version, the capabilities and the state and store
+    versions this engine reads and writes. The capabilities are the runtime,
+    the secret providers and the module drivers.
+
+func (e *Engine) Cancel(ctx context.Context, req CancelRequest) error
+    Cancel asks the running operation to stop between steps. It writes
+    cancel/<id>.json and nothing else, and takes no lock.
+
+func (e *Engine) Inspect(ctx context.Context, req InspectRequest) (Inspection, error)
+    Inspect reads state without the lock and writes nothing, so it works while
+    another operation runs and needs no secrets key.
+
+func (e *Engine) Run(ctx context.Context, req RunRequest) (Result, error)
+    Run invokes one job and nothing else: it records an operation with the
+    command run holding the provider and access steps the job needs and exactly
+    one job step. The job runs even when its spec is unchanged, and each
+    invocation is a new operation with its own ID, so the invocation ID is the
+    operation ID and the step ID. The job's native exit code is on the step
+    (Step.Job); a non-zero code fails the operation with job.exited_nonzero,
+    apart from a runtime failure of the engine. A job runs only here or as the
+    prerequisite of a service that is up, never because a group was selected.
+    When an operation was recorded but did not succeed, Run returns it with the
+    error.
+
+func (e *Engine) Submit(ctx context.Context, req SubmitRequest) (Result, error)
+    Submit changes the environment as the request says. A dry run takes no lock
+    and writes nothing. When an operation was recorded but did not succeed,
+    Submit returns it with the error.
+
+type EnvironmentView struct {
+	// Has unexported fields.
+}
+    EnvironmentView is the lock-free picture of one environment.
+
+func (v EnvironmentView) ComposeProject() string
+    ComposeProject returns the Compose project name, "" before the first
+    mutating operation.
+
+func (v EnvironmentView) Generation() int64
+    Generation returns the state generation.
+
+func (v EnvironmentView) Objects() []Object
+    Objects returns the realized objects sorted by reference. The slice is a
+    copy.
+
+func (v EnvironmentView) OpenOperation() (Operation, bool)
+    OpenOperation returns the operation that is running or was left open.
+
+func (v EnvironmentView) Revision() int
+    Revision returns the accepted revision, 0 before the first.
+
+func (v EnvironmentView) ScopeUID() string
+    ScopeUID returns the scope uid, "" before the first mutating operation.
+
+type Error struct {
+	// Has unexported fields.
+}
+    Error is a classified failure. Match it with errors.AsType[*Error] and
+    branch on Category or Code.
+
+func (e *Error) Category() Category
+    Category returns the class of the failure, which decides how a caller
+    reacts.
+
+func (e *Error) Code() Code
+    Code returns the stable code.
+
+func (e *Error) Error() string
+    Error returns a message for people. It names settings and objects, never a
+    secret value.
+
+func (e *Error) Unwrap() error
+    Unwrap returns the underlying cause for errors.Is.
+
+type InputValue struct {
+	// Has unexported fields.
+}
+    InputValue is one resolved input: public text, or a secret value.
+
+func PublicInput(key, text string) InputValue
+    PublicInput supplies the text of a public input.
+
+func SecretInput(key string, value SecretValue) InputValue
+    SecretInput supplies the value of a secret input.
+
+type InspectRequest struct {
+	// Has unexported fields.
+}
+    InspectRequest says what to inspect. Build it with InspectEnvironment or
+    InspectOperation.
+
+func InspectEnvironment(s Scope) InspectRequest
+    InspectEnvironment inspects the state of one environment.
+
+func InspectOperation(s Scope, id OperationID) InspectRequest
+    InspectOperation inspects one operation of an environment, open or archived.
+
+type Inspection struct {
+	// Has unexported fields.
+}
+    Inspection is the result of Inspect.
+
+func (i Inspection) Environment() (EnvironmentView, bool)
+    Environment returns the environment view; ok is false for an operation
+    inspection.
+
+func (i Inspection) Operation() (Operation, bool)
+    Operation returns the inspected operation; ok is false for an environment
+    inspection.
+
+type JobResult struct {
+	ExitCode int
+}
+    JobResult is the native result of a job: the exit code of the job's own
+    container. It is told apart from an engine failure, which is a Problem with
+    a runtime code.
+
+type Mapping struct {
+	Kind string
+	Name string
+	ID   string
+}
+    Mapping is one runtime object that carries a realized object.
+
+type Object struct {
+	Ref      string
+	State    string
+	Mappings []Mapping
+}
+    Object is one realized object of an environment.
+
+type Operation struct {
+	// Has unexported fields.
+}
+    Operation is the public record of an engine operation. It carries no JSON
+    tags: the command-line interface maps it to the published Operation schema.
+
+func (o Operation) Actor() ActorKind
+    Actor returns who submitted the operation.
+
+func (o Operation) Command() Command
+    Command returns the command.
+
+func (o Operation) ContinuedBy() (OperationID, bool)
+    ContinuedBy returns the operation that continues this one, if any.
+
+func (o Operation) Continues() (OperationID, bool)
+    Continues returns the operation this one continues, if any.
+
+func (o Operation) CreatedAt() time.Time
+    CreatedAt returns when the operation was recorded, in UTC.
+
+func (o Operation) ExpandedScope() bool
+    ExpandedScope reports whether the request carried the expanded scope.
+
+func (o Operation) FinishedAt() (time.Time, bool)
+    FinishedAt returns when the operation ended; ok is false while it runs.
+
+func (o Operation) ID() OperationID
+    ID returns the operation ID.
+
+func (o Operation) Problem() (Problem, bool)
+    Problem returns why the operation did not succeed, if it did not.
+
+func (o Operation) Revision() int
+    Revision returns the accepted revision the operation submits.
+
+func (o Operation) Scope() Scope
+    Scope returns the project and environment.
+
+func (o Operation) ScopeUID() string
+    ScopeUID returns the scope uid, or "" when the operation was not read from a
+    scope.
+
+func (o Operation) SelectedAll() bool
+    SelectedAll reports whether everything was selected.
+
+func (o Operation) SelectionRefs() []string
+    SelectionRefs returns the selected references, or nil when everything was
+    selected.
+
+func (o Operation) Status() Status
+    Status returns the lifecycle status.
+
+func (o Operation) Steps() []Step
+    Steps returns the steps in order. The slice is a copy.
+
+func (o Operation) UpdatedAt() time.Time
+    UpdatedAt returns when the operation last changed, in UTC.
+
+type OperationID = state.OperationID
+    OperationID identifies one operation. It is comparable.
+
+func ParseOperationID(text string) (OperationID, error)
+    ParseOperationID parses text such as "op-01J9Z8K3M4N5P6Q7R8S9T0V1W2".
+
+type Options struct {
+	// LookupEnv reads one environment variable; the process passes os.LookupEnv. It is required and is
+	// the only way the engine reads its environment.
+	LookupEnv func(key string) (string, bool)
+	// Now supplies the clock; nil uses time.Now. Values are converted to UTC.
+	Now func() time.Time
+	// Random supplies identifiers, temporary-file suffixes and jitter; nil uses crypto/rand. Secret
+	// values and encryption nonces never come from it: the local secret provider always draws them
+	// from crypto/rand, so a deterministic reader cannot repeat a nonce or make a secret predictable.
+	Random io.Reader
+}
+    Options configure New.
+
+type Preview struct {
+	// Has unexported fields.
+}
+    Preview is the dry-run result: what would change, based on which generation.
+
+func (p Preview) Actions() []Action
+    Actions returns the planned actions in order. The slice is a copy.
+
+func (p Preview) BasedOnGeneration() int64
+    BasedOnGeneration returns the state generation the preview was computed
+    from.
+
+type Problem struct {
+	Code     Code
+	Category Category
+}
+    Problem is the stable part of a failure recorded on an operation or a step:
+    a code and a category.
+
+type Result struct {
+	// Has unexported fields.
+}
+    Result is the outcome of Submit.
+
+func (r Result) Operation() (Operation, bool)
+    Operation returns the recorded operation; ok is false for a dry run and for
+    a request that had nothing to do.
+
+func (r Result) Preview() Preview
+    Preview returns what a dry run would change; it is empty for a real run.
+
+type RunRequest struct {
+	Scope Scope
+	// Project is loaded by the caller; the engine refuses it while Unresolved() is non-empty.
+	Project model.Project
+	// ProjectDir is the absolute project directory; build contexts must stay inside it.
+	ProjectDir string
+	// Job is the job to invoke, as a workload reference. A reference to anything that is not a job
+	// is validation.unknown_object.
+	Job model.ObjectRef
+	// Inputs are resolved by the caller. Job arguments are not accepted in m01.
+	Inputs []InputValue
+	// DryRun plans the invocation and writes nothing.
+	DryRun bool
+	// Wait is how long to wait for a busy environment; zero fails at once.
+	Wait time.Duration
+	// Progress, if set, is called after every persisted change, on Run's goroutine.
+	Progress func(Operation)
+}
+    RunRequest is one explicit invocation of a job.
+
+type Scope struct {
+	Project     model.ProjectName
+	Environment model.EnvironmentName
+}
+    Scope names one environment of a project.
+
+type SecretValue = secrets.Value
+    SecretValue is a secret. Every print path shows "[redacted]".
+
+func NewSecretValue(b []byte) SecretValue
+    NewSecretValue wraps b as a secret value, which then owns b.
+
+type Selection struct {
+	// Has unexported fields.
+}
+    Selection says which objects an operation changes.
+
+func SelectAll() Selection
+    SelectAll selects every object of the project.
+
+func SelectRefs(refs ...model.ObjectRef) Selection
+    SelectRefs selects the named workloads and module instances, plus the jobs
+    they require.
+
+type Status = state.OpStatus
+    Status is the lifecycle status of an operation.
+
+type Step struct {
+	ID      string
+	Action  string
+	Object  string
+	Status  StepStatus
+	Problem *Problem
+
+	// Has unexported fields.
+}
+    Step is one action of an operation.
+
+func (s Step) FinishedAt() (time.Time, bool)
+    FinishedAt returns when the step finished; ok is false while it has not.
+
+func (s Step) Job() (JobResult, bool)
+    Job returns the native result of a job step; ok is false for any other step
+    and for a job that has not exited.
+
+func (s Step) StartedAt() (time.Time, bool)
+    StartedAt returns when the step started; ok is false while it has not.
+
+type StepStatus = state.StepStatus
+    StepStatus is the status of one step.
+
+type SubmitRequest struct {
+	Scope Scope
+	// Project is loaded by the caller; the engine refuses it while Unresolved() is non-empty.
+	Project model.Project
+	// ProjectDir is the absolute project directory; build contexts must stay inside it.
+	ProjectDir string
+	Command    Command
+	Selection  Selection
+	// Inputs are resolved by the caller.
+	Inputs        []InputValue
+	DryRun        bool
+	ExpandedScope bool
+	// DeleteData makes destroy also delete the owned volumes.
+	DeleteData bool
+	// Wait is how long to wait for a busy environment; zero fails at once.
+	Wait time.Duration
+	// Progress, if set, is called after every persisted change, on Submit's goroutine.
+	Progress func(Operation)
+}
+    SubmitRequest is one request to change an environment.
+

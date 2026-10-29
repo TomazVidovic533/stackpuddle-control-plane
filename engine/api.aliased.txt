@@ -1,0 +1,240 @@
+package state // import "github.com/TomazVidovic533/stackpuddle-control-plane/internal/state"
+
+type Command int
+    Command is what an operation asks of an environment.
+
+const (
+	CommandUp Command = iota + 1
+	CommandStop
+	CommandDestroy
+	// CommandRun invokes one job explicitly, after the provider and access steps the job binds.
+	CommandRun
+)
+    The commands.
+
+func (c Command) MarshalText() ([]byte, error)
+    MarshalText implements encoding.TextMarshaler.
+
+func (c Command) String() string
+    String returns the wire name, or "" for an invalid value.
+
+func (c *Command) UnmarshalText(text []byte) error
+    UnmarshalText implements encoding.TextUnmarshaler and refuses an unknown
+    name.
+
+
+package state // import "github.com/TomazVidovic533/stackpuddle-control-plane/internal/state"
+
+type OpStatus int
+    OpStatus is the lifecycle status of an operation.
+
+const (
+	OpRunning OpStatus = iota + 1
+	OpSucceeded
+	OpFailed
+	OpCancelled
+	OpInterrupted
+	OpBlocked
+)
+    The operation statuses.
+
+func (s OpStatus) Finished() bool
+    Finished reports whether the status is final.
+
+func (s OpStatus) MarshalText() ([]byte, error)
+    MarshalText implements encoding.TextMarshaler.
+
+func (s OpStatus) String() string
+    String returns the wire name, or "" for an invalid value.
+
+func (s *OpStatus) UnmarshalText(text []byte) error
+    UnmarshalText implements encoding.TextUnmarshaler and refuses an unknown
+    name.
+
+
+package state // import "github.com/TomazVidovic533/stackpuddle-control-plane/internal/state"
+
+type StepStatus int
+    StepStatus is the status of one step of an operation.
+
+const (
+	StepPending StepStatus = iota + 1
+	StepStarted
+	StepCompleted
+	StepCompletedByObservation
+	StepNotApplied
+	StepFailed
+	StepBlocked
+)
+    The step statuses.
+
+func (s StepStatus) MarshalText() ([]byte, error)
+    MarshalText implements encoding.TextMarshaler.
+
+func (s StepStatus) String() string
+    String returns the wire name, or "" for an invalid value.
+
+func (s *StepStatus) UnmarshalText(text []byte) error
+    UnmarshalText implements encoding.TextUnmarshaler and refuses an unknown
+    name.
+
+
+package state // import "github.com/TomazVidovic533/stackpuddle-control-plane/internal/state"
+
+type ActorKind int
+    ActorKind says who submitted an operation. m01 writes only ActorOSUser;
+    ActorToken is read so a later service needs no format change.
+
+const (
+	ActorOSUser ActorKind = iota + 1
+	ActorToken
+)
+    The actor kinds.
+
+func (k ActorKind) MarshalText() ([]byte, error)
+    MarshalText implements encoding.TextMarshaler.
+
+func (k ActorKind) String() string
+    String returns the wire name, or "" for an invalid value.
+
+func (k *ActorKind) UnmarshalText(text []byte) error
+    UnmarshalText implements encoding.TextUnmarshaler and refuses an unknown
+    name.
+
+
+package state // import "github.com/TomazVidovic533/stackpuddle-control-plane/internal/state"
+
+type Category int
+    Category is the class of a problem, which decides how a caller reacts.
+
+const (
+	CategoryValidation Category = iota + 1
+	CategoryNotFound
+	CategoryConflict
+	CategoryForbidden
+	CategoryTransient
+	CategoryUnexpected
+)
+    The problem categories.
+
+func (c Category) MarshalText() ([]byte, error)
+    MarshalText implements encoding.TextMarshaler.
+
+func (c Category) String() string
+    String returns the wire name, or "" for an invalid value.
+
+func (c *Category) UnmarshalText(text []byte) error
+    UnmarshalText implements encoding.TextUnmarshaler and refuses an unknown
+    name.
+
+
+package state // import "github.com/TomazVidovic533/stackpuddle-control-plane/internal/state"
+
+type OperationID struct {
+	// Has unexported fields.
+}
+    OperationID identifies one operation: "op-" and a ULID. It is comparable.
+
+func NewOperationID(now time.Time, random io.Reader) (OperationID, error)
+    NewOperationID returns a fresh OperationID from now and random.
+
+func ParseOperationID(text string) (OperationID, error)
+    ParseOperationID parses text such as "op-01J9Z8K3M4N5P6Q7R8S9T0V1W2".
+
+func (id OperationID) IsZero() bool
+    IsZero reports whether id is the zero value.
+
+func (id OperationID) MarshalText() ([]byte, error)
+    MarshalText implements encoding.TextMarshaler.
+
+func (id OperationID) String() string
+    String returns the identifier, or "" for the zero value.
+
+func (id *OperationID) UnmarshalText(text []byte) error
+    UnmarshalText implements encoding.TextUnmarshaler and validates the text.
+
+
+package state // import "github.com/TomazVidovic533/stackpuddle-control-plane/internal/state"
+
+const (
+	CodeCapabilityUnsupported   = "compatibility.capability_unsupported"
+	CodeProjectUnresolved       = "compatibility.project_unresolved"
+	CodeProjectInvalid          = "validation.project_invalid"
+	CodeStateVersionUnsupported = "compatibility.state_version_unsupported"
+	CodeExpandedScopeRequired   = "selection.expanded_scope_required"
+	CodeSecretInEnvironment     = "delivery.secret_in_environment"
+	CodeDeliveryConflict        = "delivery.conflict"
+	CodeValueUnavailable        = "delivery.value_unavailable"
+	CodeJobExitedNonzero        = "job.exited_nonzero"
+	CodeParametersInvalid       = "binding.parameters_invalid"
+	CodeEnvironmentBusy         = "conflict.environment_busy"
+	CodeStaleGeneration         = "conflict.stale_generation"
+	CodeFilesystemUnsupported   = "state.filesystem_unsupported"
+	CodeKeyMissing              = "secrets.key_missing"
+	CodeKeyInvalid              = "secrets.key_invalid"
+	CodeKeyMismatch             = "secrets.key_mismatch"
+	CodeStoreUnreadable         = "secrets.store_unreadable"
+	CodeSecretMissing           = "secrets.secret_missing"
+	CodeTargetUnreachable       = "runtime.target_unreachable"
+	CodeTargetReplaced          = "runtime.target_replaced"
+	CodeEffectFailed            = "runtime.effect_failed"
+	CodeImageMissing            = "runtime.image_missing"
+	CodeOutOfScope              = "runtime.out_of_scope"
+	CodeUnmappedOwnedObject     = "ownership.unmapped_owned_object"
+	CodeLostObject              = "ownership.lost_object"
+	CodeOperationNotFound       = "operation.not_found"
+	CodeOperationNotRunning     = "operation.not_running"
+	CodeOperationInterrupted    = "operation.interrupted"
+	CodeOperationCancelled      = "operation.cancelled"
+	CodeInvalidSetting          = "config.invalid_setting"
+	CodeInputMissing            = "validation.input_missing"
+	CodeInputInvalid            = "validation.input_invalid"
+	CodeUnknownObject           = "validation.unknown_object"
+	CodeUnexpected              = "engine.unexpected"
+)
+    Error codes, "<area>.<name>": the one table every internal package raises
+    and the public engine re-exports. A code is a published name: it is kept or
+    retired explicitly, never renamed.
+
+
+package secrets // import "github.com/TomazVidovic533/stackpuddle-control-plane/internal/secrets"
+
+type Value struct {
+	// Has unexported fields.
+}
+    Value is a secret value. Every print path shows "[redacted]".
+
+func NewValue(b []byte) Value
+    NewValue wraps b, which the Value then owns.
+
+func SCRAMSHA256(password Value, random io.Reader) (Value, error)
+    SCRAMSHA256 returns the SCRAM-SHA-256 verifier of
+    password, in the form a server stores for a role,
+    "SCRAM-SHA-256$<iterations>:<salt>$<StoredKey>:<ServerKey>" (RFC 5802,
+    RFC 7677). The salt is read from random. The verifier is as secret as the
+    password it comes from, so it is a Value.
+
+func (Value) Format(f fmt.State, _ rune)
+    Format implements fmt.Formatter so no verb prints the bytes.
+
+func (Value) GoString() string
+    GoString implements fmt.GoStringer.
+
+func (v Value) Len() int
+    Len returns the length of the value in bytes.
+
+func (Value) LogValue() slog.Value
+    LogValue implements slog.LogValuer.
+
+func (Value) MarshalJSON() ([]byte, error)
+    MarshalJSON implements json.Marshaler.
+
+func (Value) MarshalText() ([]byte, error)
+    MarshalText implements encoding.TextMarshaler.
+
+func (v Value) Reveal() []byte
+    Reveal returns the secret bytes. Only the sealed-file writer and the
+    child-environment builder call it.
+
+func (Value) String() string
+    String implements fmt.Stringer.

@@ -1,0 +1,223 @@
+version: "2"
+
+run:
+  relative-path-mode: gomod
+  tests: true
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+
+linters:
+  default: none
+  enable:
+    - govet
+    - errcheck
+    - forcetypeassert
+    - nilnil
+    - nilerr
+    - errorlint
+    - exhaustive
+    - gochecksumtype
+    - depguard
+    - mnd
+    - goconst
+    - unused
+    - ineffassign
+    - godox
+    - forbidigo
+    - gocritic
+    - cyclop
+    - gocognit
+    - nestif
+    - funlen
+    - revive
+    - contextcheck
+    - noctx
+    - containedctx
+    - gochecknoglobals
+    - gochecknoinits
+    - sloglint
+    - copyloopvar
+    - nolintlint
+  settings:
+    exhaustive:
+      check: [switch, mapliteral]
+      default-signifies-exhaustive: false
+    gochecksumtype:
+      default-signifies-exhaustive: false
+    cyclop:
+      max-complexity: 10
+    gocognit:
+      min-complexity: 15
+    nestif:
+      min-complexity: 4
+    funlen:
+      lines: 60
+      statements: 40
+    gocritic:
+      enabled-checks:
+        - commentedOutCode
+    godox:
+      keywords: [TODO, FIXME, HACK, XXX]
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    sloglint:
+      no-raw-keys: true
+      static-msg: true
+      no-global: all
+    revive:
+      rules:
+        - name: argument-limit
+          arguments: [4]
+        - name: flag-parameter
+    mnd:
+      ignored-numbers: ["0", "1", "2", "8", "16", "32", "64", "0o600", "0o700"]
+    forbidigo:
+      forbid:
+        - pattern: ^fmt\.Print.*$
+          msg: write through an injected writer or logger
+        - pattern: ^print$
+        - pattern: ^println$
+        - pattern: ^os\.(Getenv|LookupEnv|Environ)$
+          msg: the environment is read only in internal/config through an injected lookup
+        - pattern: ^exec\.Command(Context)?$
+          msg: only internal/runtime/compose and tests start processes
+      analyze-types: true
+    depguard:
+      rules:
+        engine:
+          list-mode: strict
+          files:
+            - "**/engine/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/operation
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/plan
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/config
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/lock
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/state
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/secrets
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/modules
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/module
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/runtime/compose
+            - github.com/TomazVidovic533/stackpuddle/model
+            - github.com/TomazVidovic533/stackpuddle/validation
+        operation:
+          list-mode: strict
+          files:
+            - "**/internal/operation/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/plan$
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/runtime/port$
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/state$
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/lock$
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/secrets$
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/module$
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/durable$
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/config$
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/tls$
+            - github.com/TomazVidovic533/stackpuddle/model
+            - github.com/TomazVidovic533/stackpuddle/validation
+        plan:
+          list-mode: strict
+          files:
+            - "**/internal/plan/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/module$
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/state$
+            - github.com/TomazVidovic533/stackpuddle/model$
+        port:
+          list-mode: strict
+          files:
+            - "**/internal/runtime/port/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/plan$
+        compose:
+          list-mode: strict
+          files:
+            - "**/internal/runtime/compose/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/plan$
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/runtime/port$
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/config$
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/module$
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/state$
+        state:
+          list-mode: strict
+          files:
+            - "**/internal/state/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/durable
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/lock
+        secrets:
+          list-mode: strict
+          files:
+            - "**/internal/secrets/*.go"
+            - "**/internal/secrets/local/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/secrets
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/state
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/durable
+        leaves:
+          list-mode: strict
+          files:
+            - "**/internal/config/*.go"
+            - "**/internal/durable/*.go"
+            - "**/internal/lock/*.go"
+            - "**/internal/module/*.go"
+            - "**/internal/tls/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+        modules:
+          list-mode: strict
+          files:
+            - "**/internal/modules/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/module$
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/modules/postgres$
+        postgres-module:
+          list-mode: strict
+          files:
+            - "**/internal/modules/postgres/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/TomazVidovic533/stackpuddle-control-plane/internal/module$
+            - github.com/TomazVidovic533/stackpuddle/model$
+            - github.com/TomazVidovic533/stackpuddle/validation/postgres$
+        unsafe:
+          files:
+            - "$all"
+          deny:
+            - pkg: unsafe
+              desc: unsafe is not used in this module
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      - path: ^internal/runtime/compose/
+        linters: [forbidigo]
+        text: exec\.Command
+      - path: _test\.go$
+        linters: [mnd, goconst, funlen, gochecknoglobals, cyclop, gocognit, nestif, forbidigo, revive, forcetypeassert, errcheck]
+      - path: ^tests/
+        linters: [mnd, goconst, funlen, gochecknoglobals, cyclop, gocognit, nestif, forbidigo, revive, forcetypeassert, errcheck, contextcheck, noctx]
