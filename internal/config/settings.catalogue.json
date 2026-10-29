@@ -1,0 +1,10 @@
+{
+  "settings": [
+    { "key": "STACKPUDDLE_STATE_DIR", "kind": "path", "secret": false, "meaning": "Absolute path that replaces the per-user state root." },
+    { "key": "STACKPUDDLE_SECRETS_DIR", "kind": "path", "secret": false, "meaning": "Absolute path that replaces <state root>/secrets." },
+    { "key": "STACKPUDDLE_SECRETS_KEY", "kind": "base64-32-bytes", "secret": true, "meaning": "The key of the local sealed secret store; never written by StackPuddle." },
+    { "key": "HOME", "kind": "path", "secret": false, "meaning": "Platform input: the home folder the default state root derives from." },
+    { "key": "XDG_STATE_HOME", "kind": "path", "secret": false, "meaning": "Platform input: replaces ~/.local/state as the parent of the default state root on Linux." },
+    { "key": "PATH", "kind": "path-list", "secret": false, "meaning": "Searched once for the docker binary." }
+  ]
+}

@@ -1,0 +1,15 @@
+.DS_Store
+
+# Local environment and secret files never belong in history.
+.env
+.env.*
+!.env.example
+*.secret
+*.secrets
+*.password
+*-password
+*.pem
+*.key
+*.p12
+
+/bin/
