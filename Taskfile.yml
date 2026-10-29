@@ -1,0 +1,175 @@
+version: '3'
+
+# Every check runs with GOWORK=off so a local go.work never changes what is verified. The environment of
+# the caller overrides this value on purpose: until the stackpuddle dependency is re-pinned to a pushed
+# commit that holds the model package, the checks run against a workspace file outside the repository
+# (GOWORK=<file> task check), and check:tidy then reports NOT RUN instead of fetching unpushed code.
+env:
+  GOWORK: 'off'
+
+vars:
+  PUBLIC_PACKAGES: engine
+  # Internal types and constants the public package re-exports as aliases or constants; go doc of the
+  # public package does not list their methods or values, so their own go doc output is committed too.
+  ALIASED: 'internal/state:Command internal/state:OpStatus internal/state:StepStatus internal/state:ActorKind internal/state:Category internal/state:OperationID internal/state:CodeUnexpected internal/secrets:Value'
+  # The published branch that holds the accepted decision records; CI passes its target branch.
+  DECISION_BASE_REF: origin/main
+  LINT_CONFIG: tests/lint/golangci.yml
+
+tasks:
+  tools:
+    desc: Build the tools pinned in tools.mod into bin/ (go refuses -modfile in workspace mode, so this step runs with GOWORK=off)
+    internal: true
+    # The caller's GOWORK overrides the Taskfile's env, so the commands set it themselves.
+    cmds:
+      - GOWORK=off go build -modfile=tools.mod -o bin/golangci-lint github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+      - GOWORK=off go build -modfile=tools.mod -o bin/govulncheck golang.org/x/vuln/cmd/govulncheck
+
+  fmt:
+    desc: Format Go source files with the formatters of the lint configuration
+    deps: [tools]
+    cmds:
+      - bin/golangci-lint fmt --config {{.LINT_CONFIG}}
+
+  check:format:
+    desc: Check formatting with gofumpt and goimports from the pinned golangci-lint
+    deps: [tools]
+    cmds:
+      - bin/golangci-lint fmt --diff --config {{.LINT_CONFIG}}
+
+  lint:
+    desc: Run the pinned golangci-lint with the strict configuration
+    deps: [tools]
+    cmds:
+      - bin/golangci-lint run --build-tags integration --config {{.LINT_CONFIG}} ./...
+
+  check:tidy:
+    desc: Check go.mod and go.sum are tidy (not run in workspace mode)
+    cmds:
+      - |
+        workspace="$(go env GOWORK)"
+        if [ -z "$workspace" ] || [ "$workspace" = "off" ]; then
+          go mod tidy -diff
+        else
+          echo "check:tidy: NOT RUN: workspace mode ($workspace); go mod tidy ignores go.work and would fetch unpushed siblings; run GOWORK=off task check after the re-pin"
+        fi
+
+  check:darwin:
+    desc: Compile the macOS lock and root files (their behaviour is not tested in m01)
+    cmds:
+      - GOOS=darwin go vet ./...
+
+  test:
+    desc: Run the Docker-free unit, process and architecture tests with the race detector (needs cgo and a C compiler)
+    cmds:
+      - |
+        if ! command -v "$(go env CC)" >/dev/null 2>&1; then
+          echo "test: the race detector needs cgo and a C compiler; '$(go env CC)' was not found"
+          exit 1
+        fi
+      - go test -race -count=1 -shuffle=on ./...
+
+  test:integration:
+    desc: Run the Docker-backed tests (needs the Docker daemon and Compose)
+    preconditions:
+      - sh: docker compose version
+        msg: "test:integration needs Docker Compose: `docker compose version` failed"
+      - sh: docker info
+        msg: "test:integration needs Docker: `docker info` failed"
+    cmds:
+      - go vet -tags integration ./tests/integration/... ./tests/conformance/modules/...
+      - go test -race -count=1 -p 1 -v -tags integration ./tests/integration/... ./tests/conformance/modules/...
+
+  test:fuzz:
+    desc: Fuzz the state parser and the sealed-store opener for 30 seconds each (outside check)
+    cmds:
+      - go test ./tests/unit/state -run='^$' -fuzz=FuzzParseState -fuzztime=30s -fuzzminimizetime=2s -parallel=2
+      - go test ./tests/unit/secrets/local -run='^$' -fuzz=FuzzOpenStore -fuzztime=30s -fuzzminimizetime=2s -parallel=2
+
+  build:
+    desc: Build every package
+    cmds:
+      - go build ./...
+
+  check:api:
+    desc: Compare each public package's go doc output, and the internal types it re-exports, with the committed api files
+    cmds:
+      - |
+        status=0
+        for pkg in {{.PUBLIC_PACKAGES}}; do
+          if ! go doc -all "./$pkg" | diff -u "$pkg/api.txt" -; then
+            echo "check:api: the public surface of $pkg differs from $pkg/api.txt; review the change and regenerate it with: go doc -all ./$pkg > $pkg/api.txt" >&2
+            status=1
+          fi
+        done
+        aliased=$(for item in {{.ALIASED}}; do go doc -all "./${item%%:*}" "${item##*:}"; echo; done)
+        if ! printf '%s\n' "$aliased" | diff -u engine/api.aliased.txt -; then
+          echo "check:api: an internal type the public package re-exports changed; review the change and regenerate engine/api.aliased.txt with the loop in this task" >&2
+          status=1
+        fi
+        exit $status
+
+  check:decision-record-immutable:
+    desc: Fail when an accepted decision record changed any line other than its status since DECISION_BASE_REF
+    cmds:
+      - |
+        base="{{.DECISION_BASE_REF}}"; dir=docs/architecture/decisions
+        git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "check:decision-record-immutable: not a git checkout; it compares $dir with $base" >&2; exit 1; }
+        git rev-parse --verify --quiet "$base^{commit}" >/dev/null || { echo "check:decision-record-immutable: base ref $base not found; fetch it or run with DECISION_BASE_REF=<ref>" >&2; exit 1; }
+        status=0
+        for file in $(git ls-tree -r --name-only "$base" -- "$dir" | grep '\.md$' | grep -v '/README\.md$'); do
+          state=$(git show "$base:$file" | sed -n 's/^- Status: //p' | head -n 1)
+          case "$state" in ''|Proposed*) continue ;; esac
+          if [ ! -f "$file" ]; then echo "check:decision-record-immutable: $file was $state at $base and is missing; supersede a record, never delete it" >&2; status=1; continue; fi
+          changed=$(git diff --no-ext-diff --unified=0 "$base" -- "$file" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---) ' | grep -vE '^[+-]- Status: ' || true)
+          [ -z "$changed" ] || { echo "check:decision-record-immutable: $file was $state at $base; only its '- Status:' line may change" >&2; status=1; }
+        done
+        exit $status
+
+  check:integration-tags:
+    desc: Require the integration build constraint on every Go file under tests/integration and tests/conformance/modules
+    cmds:
+      - |
+        files=$(find tests/integration tests/conformance/modules -name '*.go' -type f) || { echo "check:integration-tags: cannot list tests/integration or tests/conformance/modules" >&2; exit 1; }
+        untagged=""
+        for file in $files; do
+          [ "$(head -n 1 "$file")" = "//go:build integration" ] || untagged="$untagged $file"
+        done
+        if [ -n "$untagged" ]; then
+          echo "check:integration-tags: these files lack '//go:build integration' on their first line, so check would run them:$untagged" >&2
+          exit 1
+        fi
+
+  check:supply-chain:
+    desc: Scan dependencies with govulncheck from tools.mod (needs network access to https://vuln.go.dev)
+    deps: [tools]
+    cmds:
+      - |
+        status=0
+        bin/govulncheck ./... || status=$?
+        case "$status" in
+          0) ;;
+          3) echo "check:supply-chain: govulncheck found vulnerabilities" >&2; exit 3 ;;
+          *) echo "check:supply-chain: govulncheck did not complete; it needs https://vuln.go.dev (exit $status)" >&2; exit "$status" ;;
+        esac
+
+  check:
+    desc: Check formatting, static analysis, dependencies, public surface, decision records and the Docker-free tests
+    cmds:
+      - task: check:format
+      - go vet ./...
+      - task: lint
+      - task: check:tidy
+      - go mod verify
+      - GOWORK=off go mod verify -modfile=tools.mod
+      - task: check:api
+      - task: check:decision-record-immutable
+      - task: check:integration-tags
+      - task: check:darwin
+      - task: test
+      - task: build
+
+  verify:
+    desc: Compatibility alias for check
+    cmds:
+      - task: check
