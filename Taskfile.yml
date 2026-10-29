@@ -1,9 +1,6 @@
 version: '3'
 
-# Every check runs with GOWORK=off so a local go.work never changes what is verified. The environment of
-# the caller overrides this value on purpose: until the stackpuddle dependency is re-pinned to a pushed
-# commit that holds the model package, the checks run against a workspace file outside the repository
-# (GOWORK=<file> task check), and check:tidy then reports NOT RUN instead of fetching unpushed code.
+# Every check runs with GOWORK=off so a local go.work never changes what is verified.
 env:
   GOWORK: 'off'
 
@@ -44,15 +41,9 @@ tasks:
       - bin/golangci-lint run --build-tags integration --config {{.LINT_CONFIG}} ./...
 
   check:tidy:
-    desc: Check go.mod and go.sum are tidy (not run in workspace mode)
+    desc: Check go.mod and go.sum are tidy
     cmds:
-      - |
-        workspace="$(go env GOWORK)"
-        if [ -z "$workspace" ] || [ "$workspace" = "off" ]; then
-          go mod tidy -diff
-        else
-          echo "check:tidy: NOT RUN: workspace mode ($workspace); go mod tidy ignores go.work and would fetch unpushed siblings; run GOWORK=off task check after the re-pin"
-        fi
+      - go mod tidy -diff
 
   check:darwin:
     desc: Compile the macOS lock and root files (their behaviour is not tested in m01)

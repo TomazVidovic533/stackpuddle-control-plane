@@ -102,9 +102,7 @@ GOWORK=off task test:integration       # needs a Docker daemon and Compose; disp
 GOWORK=off task check:supply-chain     # govulncheck; needs network access to https://vuln.go.dev
 ```
 
-Run with Go 1.27.0 or later, Task 3 and a C compiler (the race detector needs cgo). Until the StackPuddle dependency in
-`go.mod` is re-pinned to a pushed commit that holds the model package, run the checks against a workspace file outside
-the repository with `GOWORK=<file> task check`; `check:tidy` then reports that it did not run.
+Run with Go 1.27.0 or later, Task 3 and a C compiler (the race detector needs cgo).
 
 Linux is the tested platform. macOS paths, `F_FULLFSYNC` and Docker Desktop's file ownership are not verified, and there
 is no Windows lock adapter.
